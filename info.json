@@ -1,0 +1,12 @@
+{
+  "commit": {
+    "commit": "0a3f0fa7eccb5490642cb5edd43698e24afdfe34",
+    "author": "Alec L. Robitaille <robit.alec@gmail.com>",
+    "time": "2021-05-07 04:44:53",
+    "files": 2,
+    "merge": false,
+    "message": "add link to targets-spatsoc-networks\n\nhttps://github.com/robitalec/targets-spatsoc-networks"
+  },
+  "remote": "https://github.com/ropensci/spatsoc",
+  "pkg": "spatsoc"
+}

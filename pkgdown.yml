@@ -1,0 +1,13 @@
+pandoc: '2.5'
+pkgdown: 1.6.1
+pkgdown_sha: ~
+articles:
+  faq: faq.html
+  intro-spatsoc: intro-spatsoc.html
+  using-edge-and-dyad: using-edge-and-dyad.html
+  using-in-sna: using-in-sna.html
+last_built: 2021-07-13T14:25Z
+urls:
+  reference: https://docs.ropensci.org/spatsoc/reference
+  article: https://docs.ropensci.org/spatsoc/articles
+
