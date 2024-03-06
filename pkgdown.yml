@@ -1,0 +1,14 @@
+pandoc: 2.16.2
+pkgdown: 2.0.7
+pkgdown_sha: ~
+articles:
+  additional-data-formats: additional-data-formats.html
+  faq: faq.html
+  intro-spatsoc: intro-spatsoc.html
+  using-edge-and-dyad: using-edge-and-dyad.html
+  using-in-sna: using-in-sna.html
+last_built: 2024-03-06T06:24Z
+urls:
+  reference: https://docs.ropensci.org/spatsoc/reference
+  article: https://docs.ropensci.org/spatsoc/articles
+

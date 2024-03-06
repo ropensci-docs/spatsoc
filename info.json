@@ -1,0 +1,12 @@
+{
+  "commit": {
+    "commit": "2edd03cb6040335476d5e4ce49a785afd7e6be62",
+    "author": "Alec L. Robitaille <robit.alec@gmail.com>",
+    "time": "2023-09-08 13:13:58",
+    "files": 42,
+    "merge": true,
+    "message": "Merge pull request #58 from ropensci/fix/cran-n-cores\n\nFix/CRAN n cores notes"
+  },
+  "repo": "https://github.com/ropensci/spatsoc",
+  "pkg": "spatsoc"
+}
