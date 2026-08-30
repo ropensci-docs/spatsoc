@@ -1,0 +1,13 @@
+{
+  "commit": {
+    "commit": "478969b3503406c839ae203784270adf5ff4f00c",
+    "author": "Alec L. Robitaille <robit.alec@gmail.com>",
+    "time": "2026-04-27T12:11:44Z",
+    "files": 1,
+    "merge": false,
+    "message": "upate codemeta.json\n"
+  },
+  "repo": "https://github.com/ropensci/spatsoc",
+  "pkg": "spatsoc",
+  "time": "2026-08-30T07:28:32Z"
+}
