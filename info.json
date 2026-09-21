@@ -1,0 +1,13 @@
+{
+  "commit": {
+    "commit": "9f76e25dfb6f69e82b284edacbfeab879bf461b0",
+    "author": "Alec L. Robitaille <robit.alec@gmail.com>",
+    "time": "2026-09-21T15:08:01Z",
+    "files": 64,
+    "merge": true,
+    "message": "Merge pull request #152 from ropensci/fix/use-air\n\nFix/use air"
+  },
+  "repo": "https://github.com/ropensci/spatsoc",
+  "pkg": "spatsoc",
+  "time": "2026-09-21T17:14:59Z"
+}
