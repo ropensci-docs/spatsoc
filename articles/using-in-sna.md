@@ -1,0 +1,630 @@
+# Using spatsoc in social network analysis
+
+`spatsoc` can be used in social network analysis to generate gambit of
+the group format data from GPS relocation data, perform data stream
+randomization and generate group by individual matrices.
+
+Gambit of the group format data is generated using the grouping
+functions:
+
+- `group_times`
+- `group_pts`
+- `group_lines`
+- `group_polys`
+
+Data stream randomization is performed using the `randomizations`
+function. Group by individual matrices are generated using the `get_gbi`
+function.
+
+------------------------------------------------------------------------
+
+See the other vignettes for further information:
+
+- [Introduction to
+  spatsoc](https://docs.ropensci.org/spatsoc/articles/intro.html)
+  - temporal grouping
+  - spatiotemporal grouping with `group_pts`, `group_lines`,
+    `group_polys`
+  - distance based edge-list generation with `edge_dist`
+- [Frequently asked questions about
+  spatsoc](https://docs.ropensci.org/spatsoc/articles/faq.html)
+  - install
+  - function details for `group_times`, `group_pts`, `group_lines`,
+    `group_polys`, `edge_dist`, `edge_nn`, and `randomizations`
+  - package design including modify-by-reference, data.table column
+    allocation
+  - calculating summary information
+- [Using spatsoc in social network
+  analysis](https://docs.ropensci.org/spatsoc/articles/using-in-sna.html)
+  - generating gambit-of-the-group data
+  - generating observed networks
+  - data stream randomization, randomized networks
+  - network metrics
+- [Using distance based edge-lists generating functions, dyad_id, and
+  fusion_id](https://docs.ropensci.org/spatsoc/articles/using-edge-and-dyad.html)
+  - generate distance based edge-lists with `edge_dist` and `edge_nn`
+  - generate dyad identifiers for edge-lists with `dyad_id`
+  - identify fusion events with `fusion_id`
+- [Geometry
+  interface](https://docs.ropensci.org/spatsoc/articles/geometry-interface-and-spatial-measures.html)
+  - using `get_geometry` to setup a geometry column and use the geometry
+    interface
+  - details of underlying distance, direction and centroid spatial
+    measures
+  - converting to and from related packages
+- [Interspecific
+  interactions](https://docs.ropensci.org/spatsoc/articles/interspecific-interactions.html)
+  - combine two movement datasets
+  - identify interspecific interactions
+
+## Generate gambit of the group data
+
+spatsoc provides users with one temporal (`group_times`) and three
+spatial (`group_pts`, `group_lines`, `group_polys`) functions to
+generate gambit of the group data from GPS relocations. Users can
+consider spatial grouping at three different scales combined with an
+appropriate temporal grouping threshold. The gambit of the group data is
+then used to generate a group by individual matrix and build the
+network.
+
+### 1. Load packages and prepare data
+
+`spatsoc` expects a `data.table` for all `DT` arguments and date time
+columns to be formatted `POSIXct`.
+
+``` r
+
+## Load packages
+library(spatsoc)
+library(data.table)
+library(asnipe)
+library(igraph)
+```
+
+``` r
+
+## Read data as a data.table
+DT <- fread(system.file("extdata", "DT.csv", package = "spatsoc"))
+
+## Cast datetime column to POSIXct
+DT[, datetime := as.POSIXct(datetime)]
+
+## Calculate the year of the relocation 
+DT[, yr := year(datetime)]
+```
+
+Next, we will group relocations temporally with `group_times` and
+spatially with one of `group_pts`, `group_lines`, `group_polys`. Note:
+these are mutually exclusive, only select one spatial grouping function
+at a time.
+
+### 2. a) `group_pts`
+
+Point based grouping by calculating distance between relocations in each
+timegroup. Depending on species and study system, relevant temporal and
+spatial grouping thresholds are used. In this case, relocations within 5
+minutes and 50 meters are grouped together.
+
+``` r
+
+## Temporal groups
+group_times(DT, datetime = 'datetime', threshold = '5 minutes')
+
+## Spatial groups
+group_pts(
+  DT,
+  threshold = 50,
+  id = 'ID',
+  coords = c('X', 'Y'),
+  timegroup = 'timegroup'
+)
+```
+
+### 2. b) `group_lines`
+
+Line based grouping by measuring intersection of, optionally buffered,
+trajectories for each individual in each timegroup. Longer temporal
+thresholds are used to measure, for example, intersecting daily
+trajectories.
+
+``` r
+
+# EPSG code for relocations
+utm <- 32736
+
+## Group relocations by julian day
+group_times(DT, datetime = 'datetime', threshold = '1 day')
+
+## Group lines for each individual and julian day
+group_lines(
+  DT,
+  threshold = 50,
+  crs = utm,
+  id = 'ID',
+  coords = c('X', 'Y'),
+  timegroup = 'timegroup',
+  sortBy = 'datetime'
+)
+```
+
+### 2. c) `group_polys`
+
+Polygon based grouping by generating home ranges using `adehabitatHR`
+and measuring intersection or proportional overlap. Longer temporal
+thresholds are used to create seasonal, monthly, yearly home ranges.
+
+``` r
+
+# EPSG code for relocations
+utm <- 32736
+
+## Option 1: area = FALSE and home range intersection 'group' column added to DT 
+group_polys(
+  DT,
+  area = FALSE,
+  hrType = 'mcp',
+  hrParams = list(percent = 95),
+  crs = utm,
+  id = 'ID',
+  coords = c('X', 'Y')
+)
+
+## Option 2: area = TRUE 
+#  results must be assigned to a new variable 
+#  data.table returned has ID1, ID2 and proportion and area overlap
+areaDT <- group_polys(
+  DT,
+  area = TRUE,
+  hrType = 'mcp',
+  hrParams = list(percent = 95),
+  crs = utm,
+  id = 'ID',
+  coords = c('X', 'Y')
+)
+```
+
+## Build observed network
+
+Once we’ve generated groups using `group_times` and one of the spatial
+grouping functions, we can generate a group by individual matrix.
+
+The following code chunk showing `get_gbi` can be used for outputs from
+any of `group_pts`, `group_lines` or `group_polys(area = FALSE)`. For
+the purpose of this vignette however, we will consider the outputs from
+`group_pts` ([2. a)](#a-group_pts)) for the following code chunk.
+
+Note: we show this example creating the group by individual matrix and
+network for only 2016 to illustrate how `spatsoc` can be used for
+simpler data with no splitting of temporal or spatial subgroups (e.g.:
+yearly, population). See the random network section for how to use
+`spatsoc` in social network analysis for multi-year or other complex
+data.
+
+### 3. `get_gbi`
+
+``` r
+
+## Subset DT to only year 2016
+subDT <- DT[yr == 2016]
+
+## Generate group by individual matrix
+# group column generated by spatsoc::group_pts
+gbiMtrx <- get_gbi(DT = subDT, group = 'group', id = 'ID')
+```
+
+Note:
+[`spatsoc::get_gbi`](https://docs.ropensci.org/spatsoc/reference/get_gbi.md)
+is identical in function to
+[`asnipe::get_group_by_individual`](https://rdrr.io/pkg/asnipe/man/get_group_by_individual.html),
+but is more efficient (some benchmarks measuring \>10x improvements)
+thanks to
+[`data.table::dcast`](https://rdrr.io/pkg/data.table/man/dcast.data.table.html).
+
+### 4. `asnipe::get_network`
+
+Next, we can use
+[`asnipe::get_network`](https://rdrr.io/pkg/asnipe/man/get_network.html)
+to build the observed social network. Ensure that the argument
+“data_format” is “GBI”. Use other arguments that are relevant to your
+analysis, here we calculate a Simple ratio index.
+
+``` r
+
+## Generate observed network
+net <- get_network(gbiMtrx,
+                   data_format = "GBI",
+                   association_index = "SRI")
+```
+
+## Data stream randomization
+
+Three types of data stream randomization are provided by `spatsoc`’s
+`randomizations` function:
+
+- step: randomizes identities of relocations between individuals within
+  each time step.
+- daily: randomizes identities of relocations between individuals within
+  each day.
+- trajectory: randomizes daily trajectories within individuals ([Spiegel
+  et al. 2016](https://doi.org/10.1111/2041-210X.12553)).
+
+The results of `randomizations` must be assigned. The function returns
+the `id` and `datetime` columns provided (and anything provided to
+`splitBy`). In addition, columns ‘observed’ and ‘iteration’ are returned
+indicating observed rows and which iteration rows correspond to (where 0
+is the observed).
+
+As with spatial grouping functions, these methods are mutually
+exclusive. Pick one `type` and rebuild the network after randomization.
+
+Note: the `coords` argument is only required for trajectory type
+randomization, since after randomizing with this method, the ‘coords’
+are needed to redo spatial grouping (with `group_pts`, `group_lines` or
+`group_polys`).
+
+### 5. a) `type = 'step'`
+
+`'step'` randomizes identities of relocations between individuals within
+each time step. The `datetime` argument expects an integer group
+generated by `group_times`. The `group` argument expects the column name
+of the group generated from the spatial grouping functions.
+
+Four columns are returned when `type = 'step'` along with `id`,
+`datetime` and `splitBy` columns:
+
+- ‘randomID’ - randomly selected ID from IDs within each time step
+- ‘observed’ - observed rows (TRUE/FALSE)
+- ‘iteration’ - which iteration rows correspond to (0 is observed)
+
+``` r
+
+# Calculate year column to ensure randomization only occurs within years
+#   since data spans multiple years
+DT[, yr := year(datetime)]
+
+## Step type randomizations
+#  providing 'timegroup' (from group_times) as datetime
+#  splitBy = 'yr' to force randomization only within year
+randStep <- randomizations(
+   DT,
+   type = 'step',
+   id = 'ID',
+   group = 'group',
+   coords = NULL,
+   datetime = 'timegroup',
+   iterations = 3,
+   splitBy = 'yr'
+)
+```
+
+### 5. b) `type = 'daily'`
+
+`'daily'` randomizes identities of relocations between individuals
+within each day. The `datetime` argument expects a datetime `POSIXct`
+format column.
+
+Four columns are returned when `type = 'daily'` along with `id`,
+`datetime` and `splitBy` columns:
+
+- ‘randomID’ - randomly selected ID for each day
+- ‘jul’ - julian day
+- ‘observed’ - observed rows (TRUE/FALSE)
+- ‘iteration’ - which iteration rows correspond to (0 is observed)
+
+``` r
+
+# Calculate year column to ensure randomization only occurs within years 
+#   since data spans multiple years
+DT[, yr := year(datetime)]
+
+## Daily type randomizations
+# splitBy = 'yr' to force randomization only within year
+randDaily <- randomizations(
+   DT,
+   type = 'daily',
+   id = 'ID',
+   group = 'group',
+   coords = NULL,
+   datetime = 'datetime',
+   splitBy = 'yr',
+   iterations = 20
+)
+```
+
+### 5. c) `type = 'trajectory'`
+
+`'trajectory'` randomizes daily trajectories within individuals
+([Spiegel et al. 2016](https://doi.org/10.1111/2041-210X.12553)). The
+`datetime` argument expects a datetime `POSIXct` format column.
+
+Five columns are returned when `type = 'trajectory'` along with `id`,
+`datetime` and `splitBy` columns:
+
+- random date time (“random” prefixed to *datetime* argument)
+- ‘jul’ - observed julian day
+- ‘observed’ - observed rows (TRUE/FALSE)
+- ‘iteration’ - which iteration rows correspond to (0 is observed)
+- ‘randomJul’ - random julian day relocations are swapped to from
+  observed julian day
+
+``` r
+
+# Calculate year column to ensure randomization only occurs within years 
+#   since data spans multiple years
+DT[, yr := year(datetime)]
+
+## Trajectory type randomization
+randTraj <- randomizations(
+   DT,
+   type = 'trajectory',
+   id = 'ID',
+   group = NULL,
+   coords = c('X', 'Y'),
+   datetime = 'datetime',
+   splitBy = 'yr',
+   iterations = 20
+)
+```
+
+## Build random network
+
+Once we’ve randomized the data stream with `randomizations`, we can
+build the random network.
+
+We will use the `get_gbi` function directly when `type` is either ‘step’
+or ‘daily’. For `type = 'trajectory'`, we will recalculate spatial
+groups with one of `group_pts`, `group_lines`, `group_polys` for the
+randomized data. In this case, the example shows `group_pts`.
+
+Since we want to create a group by individual matrix for each random
+iteration (and in this case, each year), we will use `mapply` to work on
+subsets of the randomized data.
+
+Note: building the random networks depends on the `type` used and
+therefore, the following chunks are mutually exclusive. Use the one that
+corresponds to the randomization type you used above.
+
+### 6. a) `type = 'step'`
+
+`randomizations` with `type = 'step'` returns a ‘randomID’ which should
+be used instead of the observed ‘ID’ to generate the group by individual
+matrix.
+
+After `get_gbi`, we use
+[`asnipe::get_network`](https://rdrr.io/pkg/asnipe/man/get_network.html)
+to build the random network.
+
+``` r
+
+## Create a data.table of unique combinations of iteration and year, excluding observed rows
+iterYearLs <- unique(randStep[!(observed), .(iteration, yr)])
+
+## Generate group by individual matrix 
+# for each combination of iteration number and year
+# 'group' generated by spatsoc::group_pts
+# 'randomID' used instead of observed ID (type = 'step')
+gbiLs <- mapply(FUN = function(i, y) {
+  get_gbi(randStep[iteration == i & yr == y],
+          'group', 'randomID')
+  },
+  i = iterYearLs$iter,
+  y = iterYearLs$yr,
+  SIMPLIFY = FALSE
+)
+
+## Generate a list of random networks
+netLs <- lapply(gbiLs, FUN = get_network,
+                data_format = "GBI", association_index = "SRI")
+```
+
+### 6. b) `type = 'daily'`
+
+`randomizations` with `type = 'step'` returns a ‘randomID’ which should
+be used instead of the observed ‘ID’ to generate the group by individual
+matrix.
+
+After `get_gbi`, we use
+[`asnipe::get_network`](https://rdrr.io/pkg/asnipe/man/get_network.html)
+to build the random network.
+
+In this case, we will generate a fake column representing a “population”
+to show how we can translate the `mapply` chunk above to three (or more
+variables).
+
+``` r
+
+## Generate fake population
+randDaily[, population := sample(1:2, .N, replace = TRUE)]
+
+## Create a data.table of unique combinations of iteration, year, and population, 
+#    excluding observed rows
+iterYearLs <- unique(randStep[!(observed), .(iteration, yr, population)])
+
+## Generate group by individual matrix 
+# for each combination of iteration number and year
+# 'group' generated by spatsoc::group_pts
+# 'randomID' used instead of observed ID (type = 'step')
+gbiLs <- mapply(FUN = function(i, y, p) {
+  get_gbi(randDaily[iteration == i & 
+                      yr == y & population == p],
+          'group', 'randomID')
+  },
+  i = iterYearLs$iter,
+  y = iterYearLs$yr,
+  p = iterYearLs$population,
+  SIMPLIFY = FALSE
+)
+
+## Generate a list of random networks
+netLs <- lapply(gbiLs, FUN = get_network,
+                data_format = "GBI", association_index = "SRI")
+```
+
+### 6. c) `type = 'trajectory'`
+
+`randomizations` with `type = 'trajectory'` returns a random date time
+which should be used instead of the observed date time to generate
+random gambit of the group data.
+
+First, we pass the randomized data to `group_times` using the random
+date time for `datetime`.
+
+After `get_gbi`, we use
+[`asnipe::get_network`](https://rdrr.io/pkg/asnipe/man/get_network.html)
+to build the random network.
+
+``` r
+
+## Randomized temporal groups
+# 'datetime' is the randomdatetime produced by randomizations(type = 'trajectory')
+group_times(randTraj, datetime = 'randomdatetime', threshold = '5 minutes')
+
+## Randomized spatial groups
+# 'iteration' used in splitBy to ensure only points within each iteration are grouped
+group_pts(randTraj, threshold = 50, id = 'ID', coords = c('X', 'Y'),
+          timegroup = 'timegroup', splitBy = 'iteration')
+
+## Create a data.table of unique combinations of iteration and year, excluding observed rows
+iterYearLs <- unique(randStep[!(observed), .(iteration, yr)])
+
+## Generate group by individual matrix 
+# for each combination of iteration number and year
+# 'group' generated by spatsoc::group_pts
+# 'ID' used since datetimes were randomized within individuals
+gbiLs <- mapply(FUN = function(i, y) {
+  get_gbi(randTraj[iteration == i & yr == y],
+          'group', 'ID')
+  },
+  i = iterYearLs$iter,
+  y = iterYearLs$yr,
+  SIMPLIFY = FALSE
+)
+
+## Generate a list of random networks
+netLs <- lapply(gbiLs, FUN = get_network,
+                data_format = "GBI", association_index = "SRI")
+```
+
+## Network metrics
+
+Finally, we can calculate some network metrics. Please note that there
+are many ways of interpreting, analyzing and measuring networks, so this
+will simply show one option.
+
+### 7. Calculate observed network metrics
+
+To calculate observed network metrics, use the network (`net`) produced
+in [4.](#asnipeget_network) from 2016 data.
+
+``` r
+
+## Generate graph
+g <- graph.adjacency(net, 'undirected', 
+                     diag = FALSE, weighted = TRUE)
+
+## Metrics for all individuals 
+observed <- data.table(
+  centrality = evcent(g)$vector,
+  strength = graph.strength(g),
+  degree = degree(g),
+  ID = names(degree(g)),
+  yr = subDT[, unique(yr)]
+)
+```
+
+### 8. Calculate random network metrics
+
+With the list of random networks from [6.](#build-random-network), we
+can generate a list of graphs with
+[`igraph::graph.adjacency`](https://r.igraph.org/reference/graph.adjacency.html)
+(for example) and calculate random network metrics.
+
+This example uses the `netLs` generated by [6. a)](#a-type-step-1) which
+was split by year and iteration.
+
+``` r
+
+## Generate graph and calculate network metrics
+mets <- lapply(seq_along(netLs), function(n) {
+  g <- graph.adjacency(netLs[[n]], 'undirected', 
+                       diag = FALSE, weighted = TRUE)
+  
+  data.table(
+    centrality = evcent(g)$vector,
+    strength = graph.strength(g),
+    degree = degree(g),
+    ID = names(degree(g)),
+    iteration = iterYearLs$iter[[n]],
+    yr = iterYearLs$yr[[n]]
+    )
+})
+
+## Metrics for all individuals across all iterations and years
+random <- rbindlist(mets)
+
+## Mean values for each individual and year
+meanMets <- random[, lapply(.SD, mean), by = .(ID, yr),
+                .SDcols = c('centrality', 'strength', 'degree')]
+```
+
+### 9. Compare observed and random metrics
+
+Instead of calculating observed and random metrics separately (shown in
+[7.](#calculate-observed-network-metrics) and
+[8.](#calculate-random-network-metrics)), we can calculate metrics for
+both at the same time and compare.
+
+This chunk expects the outputs from [5. a)](#a-type-step), skipping
+steps 6.-8.
+
+Note: by removing the `!(observed)` subset from `randStep` performed in
+[6. a)](#a-type-step-1), we will include observed rows where
+`iteration == 0`. This will return a `gbiLs` where the observed and
+random rows are included in the same `data.table`.
+
+``` r
+
+## Create a data.table of unique combinations of iteration and year, including observed and random rows
+iterYearLs <- unique(randStep[, .(iteration, yr)])
+
+## Generate group by individual matrix 
+# for each combination of iteration and year
+# 'group' generated by spatsoc::group_pts
+# 'randomID' used instead of observed ID (type = 'step')
+gbiLs <- mapply(FUN = function(i, y) {
+  get_gbi(randStep[iteration == i & yr == y],
+          'group', 'randomID')
+  },
+  i = iterYearLs$iter,
+  y = iterYearLs$yr,
+  SIMPLIFY = FALSE
+)
+
+## Generate a list of random networks
+netLs <- lapply(gbiLs, FUN = get_network,
+                data_format = "GBI", association_index = "SRI")
+
+## Generate graph and calculate network metrics
+mets <- lapply(seq_along(netLs), function(n) {
+  g <- graph.adjacency(netLs[[n]], 'undirected', 
+                       diag = FALSE, weighted = TRUE)
+  
+  data.table(
+    centrality = evcent(g)$vector,
+    strength = graph.strength(g),
+    ID = names(degree(g)),
+    iteration = iterYearLs$iter[[n]],
+    yr = iterYearLs$yr[[n]]
+    )
+})
+
+## Observed and random for all individuals across all iterations and years
+out <- rbindlist(mets)
+
+## Split observed and random
+out[, observed := ifelse(iteration == 0, TRUE, FALSE)]
+
+## Mean values for each individual and year, by observed/random
+meanMets <- out[, lapply(.SD, mean), by = .(ID, yr, observed),
+                .SDcols = c('centrality', 'strength')]
+```
