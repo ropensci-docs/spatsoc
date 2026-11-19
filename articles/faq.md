@@ -1,0 +1,589 @@
+# Frequently asked questions about spatsoc
+
+spatsoc is an R package for detecting spatial and temporal groups in GPS
+relocations. It can be used to build proximity-based social networks
+using gambit-of-the-group format and edge-lists. In addition, the
+randomization function provides data-stream randomization methods
+suitable for GPS data.
+
+------------------------------------------------------------------------
+
+See the other vignettes for further information:
+
+- [Introduction to
+  spatsoc](https://docs.ropensci.org/spatsoc/articles/intro.html)
+  - temporal grouping
+  - spatiotemporal grouping with `group_pts`, `group_lines`,
+    `group_polys`
+  - distance based edge-list generation with `edge_dist`
+- [Frequently asked questions about
+  spatsoc](https://docs.ropensci.org/spatsoc/articles/faq.html)
+  - install
+  - function details for `group_times`, `group_pts`, `group_lines`,
+    `group_polys`, `edge_dist`, `edge_nn`, and `randomizations`
+  - package design including modify-by-reference, data.table column
+    allocation
+  - calculating summary information
+- [Using spatsoc in social network
+  analysis](https://docs.ropensci.org/spatsoc/articles/using-in-sna.html)
+  - generating gambit-of-the-group data
+  - generating observed networks
+  - data stream randomization, randomized networks
+  - network metrics
+- [Using distance based edge-lists generating functions, dyad_id, and
+  fusion_id](https://docs.ropensci.org/spatsoc/articles/using-edge-and-dyad.html)
+  - generate distance based edge-lists with `edge_dist` and `edge_nn`
+  - generate dyad identifiers for edge-lists with `dyad_id`
+  - identify fusion events with `fusion_id`
+- [Geometry
+  interface](https://docs.ropensci.org/spatsoc/articles/geometry-interface-and-spatial-measures.html)
+  - using `get_geometry` to setup a geometry column and use the geometry
+    interface
+  - details of underlying distance, direction and centroid spatial
+    measures
+  - converting to and from related packages
+- [Interspecific
+  interactions](https://docs.ropensci.org/spatsoc/articles/interspecific-interactions.html)
+  - combine two movement datasets
+  - identify interspecific interactions
+
+## Usage
+
+`spatsoc` leverages `data.table` to modify by reference and iteratively
+work on subsets of the input data. The first input for all functions in
+`spatsoc` is `DT`, an input `data.table`. If your data is a
+`data.frame`, you can convert it by reference using `setDT(DF)`.
+
+### Spatial and temporal grouping
+
+`spatsoc` is designed to work in two steps: temporal followed by either
+spatial grouping or edge-list generating. Considering your specific
+study species and system, determine a relevant temporal and spatial
+grouping threshold. This may be 5 minutes and 50 meters or 2 days and
+100 meters or any other thresholds - the functions provided by `spatsoc`
+are flexible to user input. In some cases, the spatial grouping function
+selected is only relevant with certain temporal grouping thresholds. For
+example, we wouldn’t expect a threshold of 5 minutes with `group_polys`.
+
+``` r
+
+# Load packages
+library(spatsoc)
+library(data.table)
+```
+
+``` r
+
+# Read data as a data.table
+DT <- fread(system.file("extdata", "DT.csv", package = "spatsoc"))
+
+# Cast datetime column to POSIXct
+DT[, datetime := as.POSIXct(datetime)]
+
+# Temporal groups
+group_times(DT, datetime = 'datetime', threshold = '5 minutes')
+```
+
+    ##            ID        X       Y            datetime population minutes timegroup
+    ##        <char>    <num>   <num>              <POSc>      <int>   <int>     <int>
+    ##     1:      A 715851.4 5505340 2016-11-01 00:00:54          1       0         1
+    ##     2:      A 715822.8 5505289 2016-11-01 02:01:22          1       0         2
+    ##     3:      A 715872.9 5505252 2016-11-01 04:01:24          1       0         3
+    ##     4:      A 715820.5 5505231 2016-11-01 06:01:05          1       0         4
+    ##     5:      A 715830.6 5505227 2016-11-01 08:01:11          1       0         5
+    ##    ---                                                                         
+    ## 14293:      J 700616.5 5509069 2017-02-28 14:00:54          1       0      1393
+    ## 14294:      J 700622.6 5509065 2017-02-28 16:00:11          1       0      1394
+    ## 14295:      J 700657.5 5509277 2017-02-28 18:00:55          1       0      1449
+    ## 14296:      J 700610.3 5509269 2017-02-28 20:00:48          1       0      1395
+    ## 14297:      J 700744.0 5508782 2017-02-28 22:00:39          1       0      1396
+
+``` r
+
+# Spatial groups
+group_pts(
+  DT,
+  threshold = 50,
+  id = 'ID',
+  coords = c('X', 'Y'),
+  timegroup = 'timegroup'
+)
+```
+
+    ##            ID        X       Y            datetime population minutes timegroup
+    ##        <char>    <num>   <num>              <POSc>      <int>   <int>     <int>
+    ##     1:      A 715851.4 5505340 2016-11-01 00:00:54          1       0         1
+    ##     2:      A 715822.8 5505289 2016-11-01 02:01:22          1       0         2
+    ##     3:      A 715872.9 5505252 2016-11-01 04:01:24          1       0         3
+    ##     4:      A 715820.5 5505231 2016-11-01 06:01:05          1       0         4
+    ##     5:      A 715830.6 5505227 2016-11-01 08:01:11          1       0         5
+    ##    ---                                                                         
+    ## 14293:      J 700616.5 5509069 2017-02-28 14:00:54          1       0      1393
+    ## 14294:      J 700622.6 5509065 2017-02-28 16:00:11          1       0      1394
+    ## 14295:      J 700657.5 5509277 2017-02-28 18:00:55          1       0      1449
+    ## 14296:      J 700610.3 5509269 2017-02-28 20:00:48          1       0      1395
+    ## 14297:      J 700744.0 5508782 2017-02-28 22:00:39          1       0      1396
+    ##        group
+    ##        <int>
+    ##     1:     1
+    ##     2:     2
+    ##     3:     3
+    ##     4:     4
+    ##     5:     5
+    ##    ---      
+    ## 14293:  9909
+    ## 14294:  9910
+    ## 14295:  9911
+    ## 14296:  9912
+    ## 14297:  9913
+
+## Installation
+
+### Package dependencies
+
+    adehabitatHR (>= 0.4.21),
+    data.table (>= 1.15.0),
+    igraph,
+    sf,
+    lwgeom (>= 0.2.15),
+    CircStats,
+    stats,
+    units (>= 0.8-6),
+    rlang
+
+See
+[here](https://github.com/r-spatial/sf/?tab=readme-ov-file#installing)
+for help installing `sf`, see
+[here](https://github.com/r-quantities/units/?tab=readme-ov-file#installation)
+for help installing `units` and
+[here](https://github.com/r-spatial/lwgeom?tab=readme-ov-file#installing)
+for help installing `lwgeom`.
+
+## Functions
+
+### group_times
+
+`group_times(DT, datetime, threshold)`
+
+- `DT`: input `data.table`
+- `datetime`: date time column name in input data.table
+- `threshold`: threshold for grouping
+
+#### DT
+
+A `data.table` with a date time formatted column. The input `DT` will be
+returned with columns appended. The `timegroup` column corresponds to
+the temporal group assigned to each row. Please note that the actual
+value of the time group is meaningless. Reordered data will return a
+different time group. What is meaningful, however, is the contents of
+each group. Each group will contain all rows nearest to the threshold
+provided.
+
+#### datetime format
+
+The `group_times` function expects either one column (`POSIXct`) or two
+columns (`IDate` and `ITime`).
+
+Given a character column representing the date time, convert it to
+`POSIXct` or `IDate` and `ITime`:
+
+``` r
+
+DT[, datetime := as.POSIXct(datetime)]
+DT[, c('idate', 'itime') := IDateTime(datetime)]
+```
+
+These are then provided to the function using the names of the column in
+the input data.
+
+`group_times(DT, datetime = 'datetime', threshold = '5 minutes')`
+
+or
+
+`group_times(DT, datetime = c('idate', 'itime'), threshold = '5 minutes')`
+
+#### threshold recommendations
+
+The `threshold` provided to `group_times` should be related to the fix
+rate of the input dataset and to the specific study system and species.
+If relocations are recorded every two hours, a `threshold = '2 hours'`
+will group all rows to the nearest two hour group (10am, 12pm, 2pm, 4pm,
+…). This, however, means that the relocations can be up to one hour
+apart from each other. Picking a smaller threshold, e.g.:
+`threshold = '15 minutes'` may be more relevant in some cases. The
+flexibility of `spatsoc`’s threshold argument means the user must
+carefully consider what threshold is reasonable to their specific
+system.
+
+#### Limitations of threshold
+
+The `threshold` of `group_times` is considered only within the scope of
+24 hours and this poses limitations on it:
+
+- `threshold` must evenly divide into 60 minutes or 24 hours
+- multi-day blocks are consistent **across years** and timegroups from
+  these are **by year**.
+- number of minutes cannot exceed 60
+- `threshold` cannot be fractional
+
+#### Columns returned by group_times
+
+The main column returned by `group_times` is “timegroup”. It represents
+the temporal group of each row, where those nearest (either above or
+below) within the threshold are grouped. Its actual value does not have
+any meaning, but the contents of each group do. That means if the data
+is reordered, a row may have a different time group, but the other rows
+in that group should not change.
+
+The extra columns are provided to help the user investigate,
+troubleshoot and interpret the timegroup.
+
+| threshold unit | column(s) added |
+|----|----|
+| minute | “minutes” column added identifying the nearest minute group for each row. |
+| hour | “hours” column added identifying the nearest hour group for each row. |
+| day | “block” columns added identifying the multiday block for each row. |
+
+#### Warnings and messages
+
+- “columns found in input DT and will be overwritten by this function”
+
+This message is returned to the user when a column matching those
+returned by `group_times` is found in the input DT. This is commonly the
+case when `group_times` is run multiple times consecutively.
+
+- “no threshold provided, using the time field directly to group”
+
+This message is returned to the user when the `threshold` is NULL. This
+is the default setting of `threshold` and, at times, may be suitable. In
+this case, the date times in the `datetime` column will be grouped
+exactly. Usually, a threshold should be provided.
+
+- “the minimum and maximum days in DT are not evenly divisible by the
+  provided block length”
+
+This warning is returned to the user when the `threshold` with unit days
+does not divide evenly into the range of days in DT. For example, if DT
+had data covering 30 days, and a threshold of ‘7 days’ was used, this
+warning would be returned. Note, this warning is returned for the range
+of days for the entire data set and not by year.
+
+### group_pts
+
+`group_pts(DT, threshold, id, coords, timegroup, splitBy)`
+
+- `DT`: input `data.table`
+- `threshold`: threshold for grouping
+- `id`: column name of IDs in `DT`
+- `coords`: column names of x and y coordinates in `DT`
+- `timegroup`: column name of time group
+- `splitBy`: (optional) column names of extra variables to group on
+
+#### DT
+
+The input `data.table`. It will returned with a column named group
+appended, which represents the spatial (and temporal if `timegroup` is
+provided) group.
+
+#### threshold
+
+The threshold must be in the units of the coordinates.
+
+### group_lines
+
+`group_lines(DT, threshold, crs, id, coords, timegroup, sortBy, splitBy, spLines)`
+
+- `DT`: input `data.table`
+- `threshold`: threshold for grouping
+- `crs`: crs of coordinates in `DT`
+- `id`: column name of IDs in `DT`
+- `coords`: column names of x and y coordinates in `DT`
+- `timegroup`: (optional) column name of time group
+- `sortBy`: column name of date time to sort rows for building lines
+- `splitBy`: (optional) column names of extra variables to group on
+- `sfLines`: alternatively, provide a sf LINESTRING object and id column
+  name
+
+#### DT
+
+See [3.2.1](#dt-1).
+
+#### threshold
+
+The `threshold` argument represents a buffer area around each line. When
+`threshold = 0`, the lines are grouped by spatial overlap. If the
+threshold is greater than 0, the lines buffered, then grouped by spatial
+overlap.
+
+#### crs
+
+The `crs` argument expects a character string or numeric defining the
+coordinate reference system to be passed to
+[`sf::st_crs`](https://r-spatial.github.io/sf/reference/st_crs.html).
+For example, for UTM zone 36S (EPSG 32736), the crs argument is
+`crs = "EPSG:32736"` or `crs = 32736`. See
+<https://spatialreference.org> for a list of EPSG codes. Please note, R
+spatial has followed updates to GDAL and PROJ for handling coordinate
+reference systems, see more at
+<https://r-spatial.org/r/2020/03/17/wkt.html>.
+
+#### sortBy
+
+The `sortBy` argument expects a date time formatted column name, which
+is used to order the rows for each individual (and `splitBy`).
+
+### group_polys
+
+`group_polys(DT, area, hrType, hrParams, crs, id, coords, splitBy, spLines)`
+
+- `DT`: input `data.table`
+- `area`: logical argument if proportional area should be returned
+- `hrType`: type of home range created
+- `hrParams`: parameters relevant to the type of home range created
+- `crs`: crs of coordinates in `DT`
+- `id`: column name of IDs in `DT`
+- `coords`: column names of x and y coordinates in `DT`
+- `splitBy`: (optional) column names of extra variables to group on
+- `sfPolys`: alternatively, provide a simple features POLGON or
+  MULTIPOLYGON object and an id column
+
+#### DT and area
+
+If `area = FALSE`, see [3.2.1](#dt-1). If `area = TRUE`, the DT will not
+be appended with a group column instead a `data.table` with IDs and
+proportional area overlap will be returned.
+
+The default unit for area overlap is square meters.
+
+#### crs
+
+The `crs` argument expects a character string or numeric defining the
+coordinate reference system to be passed to
+[`sf::st_crs`](https://r-spatial.github.io/sf/reference/st_crs.html).
+For example, for UTM zone 36S (EPSG 32736), the crs argument is
+`crs = "EPSG:32736"` or `crs = 32736`. See
+<https://spatialreference.org> for a list of EPSG codes. Please note, R
+spatial has followed updates to GDAL and PROJ for handling coordinate
+reference systems, see more at
+<https://r-spatial.org/r/2020/03/17/wkt.html>.
+
+#### hrType and hrParams
+
+Currently, `spatsoc` offers two types of home ranges provided by the
+`adehabitatHR` package: ‘mcp’ (`mcp`) and ‘kernel’ (`kernelUD` and
+`getverticeshr`). The parameters must match the arguments of those
+functions.
+
+Internally, we match arguments to the functions allowing the user to
+provide, for example, both the percent (provided to `getverticeshr`) and
+grid arguments (provided to `mcp`).
+
+``` r
+
+group_polys(
+  DT,
+  area = FALSE,
+  crs = utm,
+  hrType = 'mcp',
+  hrParams = list(grid = 60, percent = 95),
+  id = 'ID',
+  coords = c('X', 'Y')
+)
+```
+
+### edge_dist
+
+`edge_dist(DT = NULL, threshold = NULL, id = NULL, coords = NULL, timegroup = NULL, splitBy = NULL, fillNA = TRUE)`
+
+- `DT`: input `data.table`
+- `threshold`: threshold for grouping
+- `id`: column name of IDs in `DT`
+- `coords`: column names of x and y coordinates in `DT`
+- `timegroup`: column name of time group
+- `splitBy`: (optional) column names of extra variables to group on
+- `fillNA`: logical indicating if NAs should be returned for individuals
+  that were not within the threshold distance of any other. If TRUE, NAs
+  are returned. If FALSE, only edges between individuals within the
+  threshold distance are returned.
+
+This is the non-chain rule implementation similar to `group_pts`. Edges
+are defined by the distance threshold and NAs are returned for
+individuals within each timegroup if they are not within the threshold
+distance of any other individual (if `fillNA` is TRUE).
+
+**See the vignette [Using edge-list generating functions and
+dyad_id](https://docs.ropensci.org/spatsoc/articles/using-edge-and-dyad.html)
+for details about the `edge_dist` function.**
+
+### edge_nn
+
+`edge_nn(DT = NULL, id = NULL, coords = NULL, timegroup = NULL, splitBy = NULL, threshold = NULL)`
+
+- `DT`: input `data.table`
+- `id`: column name of IDs in `DT`
+- `coords`: column names of x and y coordinates in `DT`
+- `timegroup`: column name of time group
+- `splitBy`: (optional) column names of extra variables to group on
+- `threshold`: (optional) spatial distance threshold to set maximum
+  distance between an individual and their neighbour.
+
+This function can be used to generate edge-lists defined either by
+nearest neighbour or nearest neighbour with a maximum distance. NAs are
+returned for nearest neighbour for an individual was alone in a
+timegroup (and/or splitBy) or if the distance between an individual and
+it’s nearest neighbour is greater than the threshold.
+
+**See the vignette [Using edge-list generating functions and
+dyad_id](https://docs.ropensci.org/spatsoc/articles/using-edge-and-dyad.html)
+for details about the `edge_nn` function.**
+
+### randomizations
+
+`randomizations(DT, type, id, datetime, splitBy, iterations)`
+
+- `DT`: input `data.table`
+- `type`: one of ‘daily’, ‘step’ or ‘trajectory’
+- `id`: Character string of ID column name
+- `datetime`: field used for providing date time or time group - see
+  details
+- `splitBy`: List of fields in DT to split the randomization process by
+- `iterations`: The number of iterations to randomize
+
+**See the vignette [Using spatsoc in social network
+analysis](https://docs.ropensci.org/spatsoc/articles/using-in-sna.html)
+for details about the `randomizations` function (specifically the
+section ‘Data stream randomization’)**
+
+## Package design
+
+### Don’t I need to reassign to save the output?
+
+Many functions in `spatsoc` use data.table’s modify-by-reference to
+reduce recopying large datasets and improve performance. Included in
+this list are:
+
+- `group_times`
+- `group_pts`
+- `group_lines`
+- `group_polys(area = FALSE)`
+- `centroid_group`
+- `direction_to_leader`
+- `direction_to_centroid`
+- `direction_step`
+- `direction_group`
+- `direction_polarization`
+- `distance_to_centroid`
+- `distance_to_leader`
+- `fusion_id`
+- `dyad_id`
+- `leader_direction_group`
+
+Functions that require their outputs be reassigned include:
+
+- `group_polys(area = TRUE)`
+- `edge_dist`
+- `edge_nn`
+- `edge_delay`
+- `edge_direction`
+- `edge_alignment`
+- `centroid_fusion`
+- `centroid_dyad`
+- `leader_edge_delay`
+- `randomizations`
+
+### Why does a function print the result, but columns aren’t added to my DT?
+
+Check that your `data.table` has columns allocated (with
+[`data.table::truelength`](https://rdrr.io/pkg/data.table/man/truelength.html))
+and if not, use
+[`data.table::setDT`](https://rdrr.io/pkg/data.table/man/setDT.html) or
+[`data.table::alloc.col`](https://rdrr.io/pkg/data.table/man/truelength.html).
+This can happen if you are reading your data from `RDS` or `RData`
+files. [See
+here.](https://cran.r-project.org/package=data.table/vignettes/datatable-faq.html#reading-data.table-from-rds-or-rdata-file)
+
+``` r
+
+if (truelength(DT) == 0) {
+  setDT(DT)
+}
+# then go to spatsoc
+group_times(DT, datetime = 'datetime', threshold = '5 minutes')
+```
+
+or simply:
+
+``` r
+
+DT <- readRDS('path/to/data.Rds')
+alloc.col(DT)
+```
+
+## Summary information
+
+Here are some useful code chunks for understanding the spatial and
+temporal extent of your data and the outputs of `spatsoc` functions.
+
+### Number of individuals
+
+``` r
+
+# Number of unique individuals
+DT[, uniqueN(ID)]
+
+# Number of unique individuals by timegroup
+DT[, uniqueN(ID), by = timegroup]
+```
+
+### Temporal range
+
+``` r
+
+# Min, max datetime
+DT[, range(datetime)]
+
+# Difference between relocations in hours
+DT[order(datetime), 
+   .(difHours = as.numeric(difftime(datetime, shift(datetime), units = 'hours'))), 
+   by = ID]
+
+# Difference between relocations in hours
+DT[order(datetime), 
+   .(difMins = as.numeric(difftime(datetime, shift(datetime), units = 'mins'))), 
+   by = ID]
+```
+
+### Spatial extent
+
+Simple spatial extents can be calculated for all individuals or by
+individual.
+
+``` r
+
+# All individuals
+DT[, .(minX = min(X),
+       maxX = max(X),
+       minY = min(Y),
+       maxY = max(Y),)]
+
+# By individual
+DT[, .(minX = min(X),
+       maxX = max(X),
+       minY = min(Y),
+       maxY = max(Y),),
+   by = ID]
+```
+
+### `spatsoc` outputs
+
+After using the grouping functions, we can determine the number of
+individuals in a temporal or spatial group.
+
+``` r
+
+# Number of unique individuals by timegroup
+DT[, uniqueN(ID), by = timegroup]
+
+# Number of unique individuals by group
+DT[, uniqueN(ID), by = group]
+```
